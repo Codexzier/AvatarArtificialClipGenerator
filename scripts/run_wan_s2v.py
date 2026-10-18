@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.audio import convert_for_engine, wav_duration
+from app.audio import EFFECTS, trim_audio, wav_duration
 from app.comfy.client import ComfyClient
 from app.config import load_config, resolve_path
 from app.engines.base import VideoSettings
@@ -28,6 +28,9 @@ def main():
     src.add_argument("--wav", type=Path)
     src.add_argument("--text")
     p.add_argument("--voice", help="Stimmen-ID (mit --text)")
+    p.add_argument("--speed", type=float, default=cfg["tts"]["speed"], help="Sprechtempo, >1 schneller (mit --text)")
+    p.add_argument("--pause", type=float, default=cfg["tts"]["sentence_pause"], help="Satzpause in s (mit --text)")
+    p.add_argument("--effect", choices=list(EFFECTS), default=cfg["tts"]["effect"], help="Audioeffekt (mit --text)")
     p.add_argument("--prompt", default="A person speaks calmly, natural lip movement and subtle head motion.")
     p.add_argument("--quality", choices=list(v["quality"]), default="preview")
     p.add_argument("--resolution", choices=list(v["resolutions"]), default="480p quer")
@@ -36,21 +39,25 @@ def main():
 
     work = resolve_path(cfg["paths"]["work_dir"])
     q = v["quality"][a.quality]
-    max_s = min(cfg["limits"]["max_audio_seconds"], q.get("max_seconds", 1e9))
+    limit = cfg["limits"]["max_audio_seconds"]
+    preview_s = q.get("max_seconds")  # Vorschau: Audio wird gekürzt statt abgelehnt
     if a.text:
         engines = available_engines()
         flat = {x.id: x for vs in discover_voices(engines, resolve_path(cfg["paths"]["voices_dir"])).values() for x in vs}
         if a.voice not in flat:
             sys.exit("Mit --text wird --voice benötigt (siehe scripts/preview_audio.py --list).")
         try:
-            wav = make_audio(a.text, engines[flat[a.voice].engine], flat[a.voice], TTSSettings(), "none",
-                             work, max_s).path
+            wav = make_audio(a.text, engines[flat[a.voice].engine], flat[a.voice], TTSSettings(a.speed, a.pause),
+                             a.effect, work, limit).path
         except AudioTooLongError as e:
             sys.exit(str(e))
     else:
         wav = a.wav
-        if wav_duration(wav) > max_s:
-            sys.exit(f"Das Audio ist {wav_duration(wav):.1f} s lang, in der Stufe '{a.quality}' sind {max_s:g} s erlaubt.")
+        if wav_duration(wav) > limit:
+            sys.exit(f"Das Audio ist {wav_duration(wav):.1f} s lang, erlaubt sind {limit:g} s.")
+    if preview_s and wav_duration(wav) > preview_s:
+        print(f"Vorschau: Audio ({wav_duration(wav):.1f} s) wird auf {preview_s:g} s gekürzt.")
+        wav = trim_audio(wav, work / "preview_trim.wav", preview_s)
 
     w, h = v["resolutions"][a.resolution]
     seed = a.seed if a.seed is not None else random.randint(0, 2**32 - 1)
