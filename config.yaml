@@ -18,3 +18,30 @@ tts:
   speed: 1.0                  # 1.0 normal, >1 schneller
   sentence_pause: 0.3         # Sekunden zwischen Sätzen
   effect: none                # none | robot | radio | reverb
+
+video:
+  engine: wan_s2v
+  fps: 16                     # feste Bildrate von Wan 2.2 S2V
+  tail_tolerance_frames: 4    # so viele Frames darf das Video kürzer sein (letztes Bild wird gehalten)
+  trim_frames: 3              # Frames, die der "Erstes-Bild-Fix" der offiziellen Vorlage entfernt
+  resolutions:
+    "480p quer": [832, 480]
+    "480p hoch": [480, 832]
+    "quadratisch": [480, 480]
+    "720p quer": [1280, 720]
+    "720p hoch": [720, 1280]
+  # Stufen sind Startwerte und können hier angepasst werden.
+  quality:
+    preview: {steps: 4,  cfg: 1.0, lora: true,  max_seconds: 2}
+    fast:    {steps: 4,  cfg: 1.0, lora: true}
+    normal:  {steps: 8,  cfg: 1.0, lora: true}
+    high:    {steps: 20, cfg: 6.0, lora: false}
+
+engines:
+  wan_s2v:
+    unet_loader: unet         # unet = safetensors (fp8), gguf = ComfyUI-GGUF
+    unet: wan2.2_s2v_14B_fp8_scaled.safetensors
+    clip: umt5_xxl_fp8_e4m3fn_scaled.safetensors
+    vae: wan_2.1_vae.safetensors
+    audio_encoder: wav2vec2_large_english_fp16.safetensors
+    lora: wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors
