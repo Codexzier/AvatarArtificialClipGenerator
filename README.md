@@ -3,7 +3,7 @@
 Lokaler Generator für sprechende Bilder (Talking Head mit Lippensynchronisation). Alles läuft lokal.
 Ziel-Hardware: RTX 4070 Super (12 GB VRAM), 32 GB RAM, Pop!_OS.
 
-**Stand: Etappe 2 (ComfyUI + Wan 2.2 S2V per Kommandozeile, ungetestet auf echter GPU).** Gradio-Oberfläche folgt.
+**Stand: Etappe 3 (Gradio-Oberfläche).** Wan 2.2 S2V wurde auf einer RTX 4070 SUPER getestet (Vorschau, 5 s und 8 s Clips); die Oberfläche selbst ist bisher nur mit Mock-Engines getestet.
 
 ## Installation (Etappe 1)
 
@@ -50,6 +50,19 @@ Technik: Wan 2.2 S2V arbeitet mit 16 fps; ein Chunk liefert ca. 80 Frames (5 s),
 `WanSoundImageToVideoExtend` verkettet (wie in der offiziellen ComfyUI-Vorlage). Standardmodell ist fp8_scaled
 (15,3 GB); ComfyUI lagert auf 12 GB VRAM automatisch in den RAM aus. GGUF ist über `engines.wan_s2v.unet_loader: gguf`
 und `WITH_GGUF=1 scripts/install_comfyui.sh` vorgesehen.
+
+## Bedienung (Oberfläche)
+
+```bash
+scripts/start.sh        # startet ComfyUI (falls nicht schon aktiv) und die App auf http://127.0.0.1:7860
+```
+
+- **Erstellen:** Bild hochladen (die Auflösung wird nach dem Seitenverhältnis vorgeschlagen), Text eingeben, Bewegungs-Vorlage
+  oder eigenen Prompt, Stimme/Tempo/Pause/Effekt wählen, mit „Probehören" Stimme und Länge prüfen, dann „Video erzeugen".
+- Die Qualitätsstufe steuert Schritte und Lightning-LoRA; „Vorschau" kürzt das Audio auf 2 s.
+- Es läuft immer nur ein Job; weitere warten in der Warteschlange. „Abbrechen" stoppt den laufenden Job.
+- **Verlauf:** bisherige Clips mit ihren Einstellungen (`outputs/<Datum_Uhrzeit>/`).
+- Fehlt Auslagerungsspeicher (Swap < 8 GB bei < 48 GB RAM), zeigt die App einen Hinweis.
 
 ## Tests
 
