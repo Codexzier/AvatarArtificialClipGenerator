@@ -4,7 +4,7 @@ from app.config import load_config, resolve_path
 from app.engines.wan_s2v import WanS2VEngine
 from app.jobs import Pipeline
 from app.tts.registry import available_engines, discover_voices
-from app.ui import build_ui
+from app.ui import CSS, THEME, build_ui
 
 
 def build_pipeline(cfg: dict) -> Pipeline:
@@ -20,7 +20,7 @@ def main():
     cfg = load_config()
     demo = build_ui(build_pipeline(cfg))
     demo.queue(default_concurrency_limit=1)
-    demo.launch(server_name=cfg["ui"]["host"], server_port=cfg["ui"]["port"],
+    demo.launch(server_name=cfg["ui"]["host"], server_port=cfg["ui"]["port"], css=CSS, theme=THEME,
                 allowed_paths=[str(resolve_path(cfg["paths"]["outputs_dir"])), str(resolve_path(cfg["paths"]["work_dir"]))])
 
 

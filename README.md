@@ -57,6 +57,7 @@ und `WITH_GGUF=1 scripts/install_comfyui.sh` vorgesehen.
 scripts/start.sh        # startet ComfyUI (falls nicht schon aktiv) und die App auf http://127.0.0.1:7860
 ```
 
+- Die Oberfläche ist kompakt für ein Fenster von ca. 600x400 Pixeln gebaut: Tabs „Erstellen / Ergebnis / Verlauf", seltene Einstellungen im Klappmenü „Mehr"; nach dem Erzeugen springt die App zum Ergebnis.
 - **Erstellen:** Bild hochladen (die Auflösung wird nach dem Seitenverhältnis vorgeschlagen), Text eingeben, Bewegungs-Vorlage
   oder eigenen Prompt, Stimme/Tempo/Pause/Effekt wählen, mit „Probehören" Stimme und Länge prüfen, dann „Video erzeugen".
 - Die Qualitätsstufe steuert Schritte und Lightning-LoRA; „Vorschau" kürzt das Audio auf 2 s.
