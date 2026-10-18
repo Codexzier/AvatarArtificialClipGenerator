@@ -45,3 +45,12 @@ engines:
     vae: wan_2.1_vae.safetensors
     audio_encoder: wav2vec2_large_english_fp16.safetensors
     lora: wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors
+
+ui:
+  host: 127.0.0.1
+  port: 7860
+  motion_templates:           # Anzeigename -> englischer Prompt (Wan versteht Englisch am besten)
+    "Person spricht ruhig": "A person speaks calmly and naturally, natural lip movement and subtle head motion."
+    "Person spricht lebhaft": "A person speaks with lively expression, natural lip movement, small gestures and nodding."
+    "Roboter spricht, leichte Kopfbewegung": "A robot speaks, mouth moves in sync with speech, slight head movement, mechanical and steady."
+    "Figur spricht freundlich": "A friendly character talks to the camera, smiling slightly, natural lip movement."
