@@ -54,3 +54,11 @@ def convert_for_engine(src: Path, dst: Path, rate: int = 16000, channels: int = 
     """Passt Abtastrate und Kanalzahl an die Video-Engine an."""
     _ffmpeg(["-i", str(src), "-ar", str(rate), "-ac", str(channels), "-c:a", "pcm_s16le", str(dst)])
     return dst
+
+
+def trim_audio(src: Path, dst: Path, seconds: float) -> Path:
+    """Schneidet das Audio hart auf `seconds` (kurzes Ausblenden gegen Knacken)."""
+    fade = min(0.05, seconds / 4)
+    _ffmpeg(["-i", str(src), "-t", f"{seconds:.3f}", "-af", f"afade=t=out:st={seconds - fade:.3f}:d={fade:.3f}",
+             "-c:a", "pcm_s16le", str(dst)])
+    return dst
