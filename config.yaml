@@ -1,0 +1,20 @@
+# Pfade sind relativ zum Projektordner oder absolut.
+paths:
+  voices_dir: voices          # Unterordner pro TTS-Engine, z. B. voices/piper/*.onnx
+  outputs_dir: outputs
+  work_dir: .work             # temporäre Dateien
+  comfyui_dir: ComfyUI
+
+comfyui:
+  host: 127.0.0.1
+  port: 8188
+
+limits:
+  max_audio_seconds: 10
+  chars_per_second: 14        # Richtwert für den Zeichenzähler (nur Schätzung)
+
+tts:
+  default_engine: piper
+  speed: 1.0                  # 1.0 normal, >1 schneller
+  sentence_pause: 0.3         # Sekunden zwischen Sätzen
+  effect: none                # none | robot | radio | reverb
