@@ -65,6 +65,23 @@ scripts/start.sh        # startet ComfyUI (falls nicht schon aktiv) und die App 
 - **Verlauf:** bisherige Clips mit ihren Einstellungen (`outputs/<Datum_Uhrzeit>/`).
 - Fehlt Auslagerungsspeicher (Swap < 8 GB bei < 48 GB RAM), zeigt die App einen Hinweis.
 
+## Desktop-Anwendung (Linux, Pop!_OS)
+
+Statt im Browser läuft die App in einem eigenen Fenster (ca. 620x470) mit Eintrag im Anwendungsmenü.
+Ein Klick startet ComfyUI und die Oberfläche, das Schließen des Fensters beendet beides (und gibt den VRAM frei).
+
+```bash
+sudo apt install -y python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1 \
+     gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
+scripts/install_launcher.sh        # pywebview in der venv + Menü-Eintrag mit Icon
+scripts/avatargen.sh               # oder direkt starten; --stop beendet eine laufende Instanz
+```
+
+Fenster-Rückfall: Ist GTK/WebKit nicht nutzbar, nutzt die App Chromium oder Google Chrome im App-Modus (ohne
+Adressleiste). Firefox hat keinen solchen Modus; ohne pywebview und Chromium/Chrome startet die Desktop-Variante nicht
+(dann weiter `scripts/start.sh` und den Browser benutzen). Bekannte Grenze: Das Videoabspielen im WebKit-Fenster braucht die
+GStreamer-Pakete oben; sonst Chromium/Chrome installieren.
+
 ## Tests
 
 ```bash
