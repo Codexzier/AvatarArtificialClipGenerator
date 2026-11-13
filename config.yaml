@@ -49,6 +49,7 @@ engines:
 ui:
   host: 127.0.0.1
   port: 7860
+  window: {width: 620, height: 470}   # Desktop-Fenster (scripts/avatargen.sh)
   motion_templates:           # Anzeigename -> englischer Prompt (Wan versteht Englisch am besten)
     "Person spricht ruhig": "A person speaks calmly and naturally, natural lip movement and subtle head motion."
     "Person spricht lebhaft": "A person speaks with lively expression, natural lip movement, small gestures and nodding."
