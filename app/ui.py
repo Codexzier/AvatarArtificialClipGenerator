@@ -11,6 +11,8 @@ from app.batch import BatchRunner, parse_bulk, parse_rows
 from app.history import list_runs
 from app.jobs import JobRequest, Pipeline, suggest_resolution
 from app.pipeline import AudioTooLongError
+from app.storage import safe_name
+from app.profiles import INDIVIDUAL, clip_id, get_profile, profile_choices
 from app.sysinfo import memory_hint
 
 QUALITY_LABELS = {"preview": "Vorschau (2 s)", "fast": "Schnell", "normal": "Normal", "high": "Hoch"}
@@ -56,6 +58,10 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
     runner = BatchRunner(pipeline)
 
     with gr.Blocks(title="Sprechendes Bild") as demo:
+        with gr.Row():
+            profile = gr.Dropdown(profile_choices(cfg), value=INDIVIDUAL, label="Profil", scale=3)
+            clip = gr.Textbox(label="Clip-ID (Dateiname)", placeholder="clip_capsules_start", visible=False, scale=3)
+        profile_info = gr.Markdown(visible=False)
         hint = memory_hint()
         notes = ([f"⚠️ {hint}"] if hint else []) + (
             ["⚠️ Keine Stimmen gefunden: `python scripts/download_piper_voices.py --yes`"] if not voice_choices else [])
@@ -91,6 +97,8 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
                     with gr.Row():
                         seed = gr.Number(value=0, precision=0, label="Seed")
                         random_seed = gr.Checkbox(value=True, label="Zufälliger Seed")
+                    export_dir = gr.Textbox(label="Zielordner der .mpg-Datei (Profil)", visible=False)
+                    overwrite = gr.Checkbox(value=False, label="Vorhandene Clips überschreiben", visible=False)
                     template = gr.Dropdown(list(templates), value=next(iter(templates)), label="Vorlage")
                     prompt = gr.Textbox(label="Bewegungs-Prompt", lines=2, value=next(iter(templates.values())))
                     engine = gr.Dropdown(list(pipeline.video_engines), value=next(iter(pipeline.video_engines)),
@@ -130,8 +138,21 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
         text.change(lambda t: char_info(t, cfg), text, counter)
         template.change(lambda t: templates[t], template, prompt)
         resolution.change(lambda r: HINT_720 if r.startswith("720") else "", resolution, res_hint)
-        image.change(lambda p: gr.update(value=suggest_resolution(Path(p), v["resolutions"])) if p
-                     else gr.update(), image, resolution)
+        image.change(lambda p, prof: gr.update(value=suggest_resolution(Path(p), v["resolutions"]))
+                     if p and prof == INDIVIDUAL else gr.update(), [image, profile], resolution)
+
+        def on_profile(key):
+            prof = get_profile(cfg, key)
+            if not prof:
+                return (gr.update(interactive=True), gr.update(interactive=True), gr.update(visible=False),
+                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=False))
+            info = (f"**{prof['label']}:** {prof['size'][0]}×{prof['size'][1]} · {prof['fps']} fps · MPEG-1/MP2 "
+                    f"{prof['audio_rate'] // 1000} kHz mono · `.mpg` · max. {prof['max_seconds']} s")
+            return (gr.update(value=prof["resolution"], interactive=False), gr.update(value=prof["fps"], interactive=False),
+                    gr.update(visible=True), gr.update(value=info, visible=True),
+                    gr.update(value=prof["export_dir"], visible=True), gr.update(visible=True))
+
+        profile.change(on_profile, profile, [resolution, fps, clip, profile_info, export_dir, overwrite])
 
         def do_listen(t, vid, sp, pa, ef):
             if not (t or "").strip():
@@ -147,24 +168,32 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
 
         listen.click(do_listen, [text, voice, speed, pause, effect], [listen_audio, status])
 
-        def do_generate(img, t, vid, sp, pa, ef, pr, res, ql, sd, rnd, eng, fps_, progress=gr.Progress()):
+        def do_generate(img, t, vid, sp, pa, ef, pr, res, ql, sd, rnd, eng, fps_, prof_key, cid, exp, over,
+                        progress=gr.Progress()):
             if not img:
                 raise gr.Error("Bitte ein Bild hochladen.")
             if not (t or "").strip():
                 raise gr.Error("Bitte einen Text eingeben.")
-            req = JobRequest(Path(img), t, vid, sp, pa, ef, pr, res, ql, None if rnd else int(sd), eng, int(fps_))
+            prof = get_profile(cfg, prof_key)
+            if prof and not clip_id(cid, ""):
+                raise gr.Error("Bitte eine Clip-ID eingeben (z. B. clip_capsules_start).")
+            req = JobRequest(Path(img), t, vid, sp, pa, ef, pr, res, ql, None if rnd else int(sd), eng, int(fps_),
+                             name=clip_id(cid) if prof else "video", profile=prof_key,
+                             export_dir=(exp or None) if prof else None, overwrite=bool(over))
             try:
                 run_dir, info = pipeline.run(req, lambda f, d: progress(f, desc=d))
             except ComfyCancelled:
                 return None, "Abgebrochen.", "Abgebrochen.", gr.Tabs()
-            except (AudioTooLongError, ValueError, RuntimeError) as e:
+            except (AudioTooLongError, ValueError, RuntimeError, FileExistsError) as e:
                 raise gr.Error(str(e))
             msg = (f"Fertig: `{run_dir.name}` · Seed {info['seed']} · "
-                   f"{info['audio_seconds']} s · {info['width']}x{info['height']} · {info['fps']} fps")
+                   f"{info['audio_seconds']} s · {info['width']}x{info['height']} · {info['fps']} fps"
+                   + (f" · exportiert: `{info['export']}`" if info.get("export") else ""))
             return str(run_dir / info["filename"]), msg, msg, gr.Tabs(selected="ergebnis")
 
         go.click(do_generate, [image, text, voice, speed, pause, effect, prompt, resolution, quality, seed,
-                               random_seed, engine, fps], [video, result_info, status, tabs], concurrency_limit=1, concurrency_id="gpu",
+                               random_seed, engine, fps, profile, clip, export_dir, overwrite],
+                 [video, result_info, status, tabs], concurrency_limit=1, concurrency_id="gpu",
                  show_progress_on=[status])
         stop.click(runner.cancel, None, None, queue=False)
         stop_list.click(runner.cancel, None, None, queue=False)
@@ -178,13 +207,15 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
         bulk_add.click(lambda rows, b: (non_empty(rows) + [r + [""] for r in parse_bulk(b)], ""), [jobs, bulk],
                        [jobs, bulk])
 
-        def do_batch(rows, img, vid, sp, pa, ef, pr, res, ql, sd, rnd, eng, fps_):
+        def do_batch(rows, img, vid, sp, pa, ef, pr, res, ql, sd, rnd, eng, fps_, prof_key, exp, over):
             if not img:
                 raise gr.Error("Bitte ein Bild hochladen (Tab „Erstellen“).")
-            items = parse_rows(rows)
+            prof = get_profile(cfg, prof_key)
+            items = parse_rows(rows, clip_id if prof else safe_name)
             if not items:
                 raise gr.Error("Die Liste enthält keinen Text.")
-            template = JobRequest(Path(img), "", vid, sp, pa, ef, pr, res, ql, int(sd), eng, int(fps_))
+            template = JobRequest(Path(img), "", vid, sp, pa, ef, pr, res, ql, int(sd), eng, int(fps_), profile=prof_key,
+                                  export_dir=(exp or None) if prof else None, overwrite=bool(over))
             try:
                 runner.start(items, template, bool(rnd))
             except RuntimeError as e:
@@ -196,7 +227,7 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
             yield [it.row() for it in items], f"{runner.message}: {ok} von {len(items)} fertig (Ordner `outputs/`)"
 
         start_list.click(do_batch, [jobs, image, voice, speed, pause, effect, prompt, resolution, quality, seed,
-                                    random_seed, engine, fps], [jobs, list_status], concurrency_limit=1,
+                                    random_seed, engine, fps, profile, export_dir, overwrite], [jobs, list_status], concurrency_limit=1,
                          concurrency_id="gpu")
 
         def load_history():

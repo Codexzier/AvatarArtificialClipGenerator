@@ -26,14 +26,14 @@ class JobItem:
         return [self.name, self.text, status]
 
 
-def parse_rows(rows) -> list[JobItem]:
+def parse_rows(rows, namer=safe_name) -> list[JobItem]:
     """Tabelle (Dateiname, Text, [Status]) -> Jobs; leere Zeilen entfallen, fehlende Namen werden ergänzt."""
     items, used = [], set()
     for row in rows or []:
         name, text = (str(row[0] or "").strip(), str(row[1] or "").strip()) if len(row) >= 2 else ("", "")
         if not text:
             continue
-        base = safe_name(name, f"clip_{len(items) + 1:03d}")
+        base = namer(name, f"clip_{len(items) + 1:03d}")
         unique, n = base, 1
         while unique.lower() in used:
             n += 1
@@ -104,9 +104,11 @@ class BatchRunner:
             self.message = f"Sprache {i}/{len(self.items)}"
             self.progress = 0.1 * (i - 1) / len(self.items)
             try:
-                audio = self.pipeline.prepare_audio(dataclasses.replace(template, text=it.text, name=it.name))
+                req = dataclasses.replace(template, text=it.text, name=it.name)
+                self.pipeline.check_target(req)
+                audio = self.pipeline.prepare_audio(req)
                 it.audio, it.status, it.detail = audio.path, AUDIO_OK, f"{audio.duration:.1f} s"
-            except (AudioTooLongError, ValueError, RuntimeError) as e:
+            except (AudioTooLongError, ValueError, RuntimeError, FileExistsError) as e:
                 it.status, it.detail = FAILED, str(e)
 
     def _phase_video(self, template: JobRequest, random_seed: bool, engine) -> None:
@@ -129,5 +131,5 @@ class BatchRunner:
                 it.status, it.detail = CANCELLED, ""
                 self._cancel.set()  # der Rest der Liste wird ebenfalls als abgebrochen markiert
                 return
-            except (RuntimeError, ValueError) as e:
+            except (RuntimeError, ValueError, FileExistsError) as e:
                 it.status, it.detail = FAILED, str(e)  # nächster Eintrag läuft trotzdem

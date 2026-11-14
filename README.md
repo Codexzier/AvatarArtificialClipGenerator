@@ -70,6 +70,14 @@ scripts/start.sh        # startet ComfyUI (falls nicht schon aktiv) und die App 
 - **Bildrate:** 16 fps ist nativ (Standard). 24 fps wird per ffmpeg aus den 16 fps berechnet (CPU, nach dem Modell; Länge und
   Lippensync bleiben gleich; bei schnellen Mundbewegungen können leichte Schlieren entstehen). Gemessen auf einer langsamen
   4-Kern-Testmaschine: ca. 28 s für 10 s Video in 480p, ca. 70 s in 720p.
+- **Profil (Combobox ganz oben):** „Individuell“ lässt alle Einstellungen frei. „Avatar Mondschürfer“ erzeugt das
+  Spielformat (pl_mpeg): `.mpg` (MPEG-1 Programmstream), 480×480, 30 fps, MP2 32 kHz mono, höchstens 10 s. Das Profil
+  sperrt Auflösung und Bildrate, verlangt eine Clip-ID (= Dateiname, z. B. `clip_capsules_start`, nur a-z, 0-9, `_`, `-`) und
+  legt die `.mpg` im Zielordner ab (`profiles.mondschuerfer.export_dir` in `config.yaml`, in der App im Klappmenü
+  änderbar; später auf `assets/clips/` des Spiels stellen). Vorhandene Clips werden nur mit der Option „Vorhandene Clips
+  überschreiben“ ersetzt. In der Liste ist die Spalte „Dateiname“ die Clip-ID. Zusätzlich bleibt im Ergebnisordner
+  (`outputs/…`) die MP4-Fassung zur Ansicht. Die Qualität (`video_qscale: 3`) und die Audiobitrate (96 kbit/s) sind
+  Startwerte, weil die Bitrate im Spiel nicht festgelegt war.
 - **Verlauf:** bisherige Clips mit ihren Einstellungen (`outputs/<Datum_Uhrzeit>/`).
 - Fehlt Auslagerungsspeicher (Swap < 8 GB bei < 48 GB RAM), zeigt die App einen Hinweis.
 

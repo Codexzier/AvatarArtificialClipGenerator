@@ -1,4 +1,5 @@
 """Pipeline für die Oberfläche: Text -> Audio -> Video -> Muxen -> Speichern."""
+import dataclasses
 import random
 import threading
 from dataclasses import asdict, dataclass
@@ -12,7 +13,8 @@ from app.engines.base import VideoEngine, VideoSettings
 from app.pipeline import AudioResult, make_audio
 from app.storage import safe_name, save_run
 from app.tts.base import TTSEngine, TTSSettings, Voice
-from app.video_post import mux_audio
+from app.profiles import clip_id, export_path, get_profile
+from app.video_post import export_mpeg, mux_audio
 
 
 @dataclass
@@ -29,7 +31,10 @@ class JobRequest:
     seed: int | None = None
     engine: str = "wan_s2v"
     fps: int = 16           # Ausgabe-Bildrate (16 = nativ, 24 = interpoliert)
-    name: str = "video"     # Zieldateiname ohne Endung
+    name: str = "video"     # Zieldateiname ohne Endung (Profil: Clip-ID)
+    profile: str = "individuell"
+    export_dir: str | None = None   # Profil: Zielordner der .mpg-Datei
+    overwrite: bool = False         # Profil: vorhandene Datei im Zielordner überschreiben
 
 
 def suggest_resolution(image: Path, resolutions: dict) -> str:
@@ -55,10 +60,26 @@ class Pipeline:
             raise ValueError("Bitte eine Stimme auswählen (keine installiert? scripts/download_piper_voices.py).")
         return self.voices[voice_id]
 
-    def preview_audio(self, text: str, voice_id: str, speed: float, pause: float, effect: str) -> AudioResult:
+    def preview_audio(self, text: str, voice_id: str, speed: float, pause: float, effect: str,
+                      profile: str = "individuell") -> AudioResult:
         v = self._voice(voice_id)
-        return make_audio(text, self.tts[v.engine], v, TTSSettings(speed, pause), effect, self.work,
-                          self.cfg["limits"]["max_audio_seconds"])
+        limit = self.cfg["limits"]["max_audio_seconds"]
+        prof = get_profile(self.cfg, profile)
+        if prof:
+            limit = min(limit, prof["max_seconds"])
+        return make_audio(text, self.tts[v.engine], v, TTSSettings(speed, pause), effect, self.work, limit)
+
+    def check_target(self, req: JobRequest) -> Path | None:
+        """Profil: Zieldatei bestimmen; vorhandene Dateien werden nicht stillschweigend überschrieben."""
+        prof = get_profile(self.cfg, req.profile)
+        if not prof:
+            return None
+        if not clip_id(req.name, "") :
+            raise ValueError("Bitte eine Clip-ID eingeben (z. B. clip_capsules_start).")
+        target = export_path(prof, req.name, req.export_dir)
+        if target.exists() and not req.overwrite:
+            raise FileExistsError(f"{target.name} existiert bereits im Zielordner (Überschreiben aktivieren oder andere Clip-ID).")
+        return target
 
     def cancel(self) -> None:
         if self._active:
@@ -66,7 +87,7 @@ class Pipeline:
 
     def prepare_audio(self, req: JobRequest) -> AudioResult:
         """Sprache erzeugen (CPU); in der Vorschau-Stufe auf die Testlänge gekürzt."""
-        audio = self.preview_audio(req.text, req.voice_id, req.speed, req.pause, req.effect)
+        audio = self.preview_audio(req.text, req.voice_id, req.speed, req.pause, req.effect, req.profile)
         limit = self.cfg["video"]["quality"][req.quality].get("max_seconds")
         if limit and audio.duration > limit:
             return AudioResult(trim_audio(audio.path, audio.path.with_name(audio.path.stem + "_trim.wav"), limit), limit)
@@ -77,6 +98,9 @@ class Pipeline:
         report = progress or (lambda f, t: None)
         v = self.cfg["video"]
         q = v["quality"][req.quality]
+        prof = get_profile(self.cfg, req.profile)
+        if prof:  # das Profil bestimmt Auflösung und Bildrate
+            req = dataclasses.replace(req, resolution=prof["resolution"], fps=prof["fps"])
         w, h = v["resolutions"][req.resolution]
         seed = req.seed if req.seed is not None else random.randint(0, 2**32 - 1)
         settings = VideoSettings(prompt=req.prompt, width=w, height=h, steps=q["steps"], cfg=q["cfg"],
@@ -90,10 +114,15 @@ class Pipeline:
             self._active = None
         report(0.98, "Füge Ton hinzu")
         final = mux_audio(silent, wav, self.work / silent.name.replace("_silent", ""))
+        exported = None
         info = {**asdict(req), "image": req.image.name, "motion_prompt": req.prompt, "seed": seed,
                 "steps": q["steps"], "cfg": q["cfg"], "lora": q["lora"], "width": w, "height": h,
                 "fps": req.fps, "audio_seconds": round(wav_duration(wav), 2), "voice": req.voice_id,
                 "filename": f"{safe_name(req.name)}.mp4", "models": self.cfg["engines"].get(req.engine, {})}
+        if prof:
+            target = self.check_target(dataclasses.replace(req, overwrite=True))
+            exported = export_mpeg(silent, wav, target, prof)
+            info["export"] = str(exported)
         run_dir = save_run(self.outputs, final, wav, req.image, info, req.name)
         report(1.0, "Fertig")
         return run_dir, info
@@ -102,6 +131,7 @@ class Pipeline:
         """Einzeljob: Audio + Video. Fehler als Exceptions mit verständlicher Meldung."""
         report = progress or (lambda f, t: None)
         with self._lock:
+            self.check_target(req)  # vor der Berechnung: Clip-ID und Zieldatei prüfen
             report(0.0, "Erzeuge Audio")
             audio = self.prepare_audio(req)
             return self.render(req, audio.path, lambda f, t: report(0.05 + 0.95 * f, t))

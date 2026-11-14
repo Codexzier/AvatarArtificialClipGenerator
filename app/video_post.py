@@ -35,3 +35,15 @@ def video_duration(path: Path) -> float:
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
                         "-of", "default=nw=1:nk=1", str(path)], capture_output=True, text=True)
     return float(r.stdout.strip())
+
+
+def export_mpeg(video: Path, wav: Path, out: Path, p: dict) -> Path:
+    """Spielformat (Profil): MPEG-1 Programmstream mit MP2-Ton, Länge = Länge der WAV."""
+    w, h = p["size"]
+    out.parent.mkdir(parents=True, exist_ok=True)
+    _ffmpeg(["-i", str(video), "-i", str(wav), "-map", "0:v", "-map", "1:a",
+             "-vf", f"scale={w}:{h}:flags=lanczos,format=yuv420p", "-r", str(p["fps"]),
+             "-c:v", p["video_codec"], "-q:v", str(p["video_qscale"]), "-g", str(p["gop"]),
+             "-c:a", p["audio_codec"], "-b:a", p["audio_bitrate"], "-ar", str(p["audio_rate"]),
+             "-ac", str(p["audio_channels"]), "-t", f"{wav_duration(wav):.3f}", "-f", p["container"], str(out)])
+    return out
