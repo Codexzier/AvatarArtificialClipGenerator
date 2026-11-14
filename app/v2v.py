@@ -33,7 +33,7 @@ def build_prompt(cfg: dict, prompt: str, style: str) -> tuple[str, str]:
 
 
 class V2VPipeline:
-    def __init__(self, cfg: dict, engine: WanFunControlEngine, lock: threading.Lock | None = None):
+    def __init__(self, cfg: dict, engine: WanFunControlEngine, lock=None):
         self.cfg, self.engine = cfg, engine
         self.work = resolve_path(cfg["paths"]["work_dir"])
         self.outputs = resolve_path(cfg["paths"]["outputs_dir"])
