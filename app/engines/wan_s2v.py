@@ -124,8 +124,8 @@ class WanS2VEngine(VideoEngine):
                 data = self.client.view(f["filename"], f.get("subfolder", ""), f.get("type", "output"))
                 (frames_dir / f"frame_{i:05d}.png").write_bytes(data)
             if progress:
-                progress(0.97, "Setze Video zusammen")
-            out = frames_to_video(frames_dir, self.fps, duration, work_dir / f"{job}_silent.mp4")
+                progress(0.97, "Berechne Zwischenbilder" if settings.output_fps != self.fps else "Setze Video zusammen")
+            out = frames_to_video(frames_dir, self.fps, duration, work_dir / f"{job}_silent.mp4", settings.output_fps)
             shutil.rmtree(frames_dir, ignore_errors=True)
             self._cleanup_output(prefix)
             if progress:
@@ -138,7 +138,11 @@ class WanS2VEngine(VideoEngine):
         except ComfyCancelled:
             raise
         finally:
-            self.client.free()
+            if not self.keep_models:
+                self.client.free()
+
+    def release(self) -> None:
+        self.client.free()
 
     def _cleanup_output(self, prefix: str) -> None:
         if self.comfyui_dir:

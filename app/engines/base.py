@@ -17,12 +17,17 @@ class VideoSettings:
     use_lora: bool = True
     seed: int = 0
     quality: str = "fast"
+    output_fps: int = 16          # Ausgabe-Bildrate; vom Modell nativ sind 16
     negative_prompt: str = ""
     extra: dict = field(default_factory=dict)
 
 
 class VideoEngine(ABC):
     name: str
+    keep_models: bool = False  # True: Modelle nach dem Job im Speicher lassen (Stapelverarbeitung)
+
+    def release(self) -> None:
+        """Gibt Modelle/VRAM frei (nach dem letzten Job eines Stapels)."""
 
     @abstractmethod
     def generate(self, image: Path, wav: Path, settings: VideoSettings, work_dir: Path,

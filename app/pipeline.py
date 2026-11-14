@@ -1,5 +1,5 @@
 """Schritte 1-3 der Pipeline: Text -> TTS -> Längenprüfung -> Effekt."""
-import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,7 +27,7 @@ def make_audio(text: str, engine: TTSEngine, voice: Voice, settings: TTSSettings
     if effect not in EFFECTS:
         raise ValueError(f"Unbekannter Effekt: {effect}")
     work_dir.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%Y%m%d_%H%M%S")
+    stamp = uuid.uuid4().hex[:10]
     raw = engine.synthesize(text, voice, settings, work_dir / f"tts_{stamp}.wav")
     path = apply_effect(raw, work_dir / f"audio_{stamp}.wav", effect)
     duration = wav_duration(path)

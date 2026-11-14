@@ -80,7 +80,7 @@ def main():
     run = save_run(resolve_path(cfg["paths"]["outputs_dir"]), final, wav, a.image,
                    {**vars(settings), "resolution": a.resolution, "engine": engine.name,
                     "audio_seconds": wav_duration(wav), "models": cfg["engines"]["wan_s2v"]})
-    print("Fertig:", run / "video.mp4")
+    print("Fertig:", next(run.glob("*.mp4")))
 
 
 if __name__ == "__main__":

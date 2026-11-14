@@ -10,7 +10,7 @@ from app.audio import trim_audio, wav_duration
 from app.config import resolve_path
 from app.engines.base import VideoEngine, VideoSettings
 from app.pipeline import AudioResult, make_audio
-from app.storage import save_run
+from app.storage import safe_name, save_run
 from app.tts.base import TTSEngine, TTSSettings, Voice
 from app.video_post import mux_audio
 
@@ -28,6 +28,8 @@ class JobRequest:
     quality: str
     seed: int | None = None
     engine: str = "wan_s2v"
+    fps: int = 16           # Ausgabe-Bildrate (16 = nativ, 24 = interpoliert)
+    name: str = "video"     # Zieldateiname ohne Endung
 
 
 def suggest_resolution(image: Path, resolutions: dict) -> str:
@@ -62,33 +64,44 @@ class Pipeline:
         if self._active:
             self._active.cancel()
 
-    def run(self, req: JobRequest, progress=None) -> tuple[Path, dict]:
-        """Gibt (Ergebnisordner, settings) zurück. Fehler als Exceptions mit verständlicher Meldung."""
+    def prepare_audio(self, req: JobRequest) -> AudioResult:
+        """Sprache erzeugen (CPU); in der Vorschau-Stufe auf die Testlänge gekürzt."""
+        audio = self.preview_audio(req.text, req.voice_id, req.speed, req.pause, req.effect)
+        limit = self.cfg["video"]["quality"][req.quality].get("max_seconds")
+        if limit and audio.duration > limit:
+            return AudioResult(trim_audio(audio.path, audio.path.with_name(audio.path.stem + "_trim.wav"), limit), limit)
+        return audio
+
+    def render(self, req: JobRequest, wav: Path, progress=None, keep_models: bool = False) -> tuple[Path, dict]:
+        """Video zu fertigem Audio erzeugen, Ton muxen, speichern. Gibt (Ergebnisordner, settings) zurück."""
         report = progress or (lambda f, t: None)
         v = self.cfg["video"]
         q = v["quality"][req.quality]
+        w, h = v["resolutions"][req.resolution]
+        seed = req.seed if req.seed is not None else random.randint(0, 2**32 - 1)
+        settings = VideoSettings(prompt=req.prompt, width=w, height=h, steps=q["steps"], cfg=q["cfg"],
+                                 use_lora=q["lora"], seed=seed, quality=req.quality, output_fps=req.fps)
+        engine = self.video_engines[req.engine]
+        engine.keep_models = keep_models
+        self._active = engine
+        try:
+            silent = engine.generate(req.image, wav, settings, self.work, lambda f, t: report(f, t))
+        finally:
+            self._active = None
+        report(0.98, "Füge Ton hinzu")
+        final = mux_audio(silent, wav, self.work / silent.name.replace("_silent", ""))
+        info = {**asdict(req), "image": req.image.name, "motion_prompt": req.prompt, "seed": seed,
+                "steps": q["steps"], "cfg": q["cfg"], "lora": q["lora"], "width": w, "height": h,
+                "fps": req.fps, "audio_seconds": round(wav_duration(wav), 2), "voice": req.voice_id,
+                "filename": f"{safe_name(req.name)}.mp4", "models": self.cfg["engines"].get(req.engine, {})}
+        run_dir = save_run(self.outputs, final, wav, req.image, info, req.name)
+        report(1.0, "Fertig")
+        return run_dir, info
+
+    def run(self, req: JobRequest, progress=None) -> tuple[Path, dict]:
+        """Einzeljob: Audio + Video. Fehler als Exceptions mit verständlicher Meldung."""
+        report = progress or (lambda f, t: None)
         with self._lock:
             report(0.0, "Erzeuge Audio")
-            audio = self.preview_audio(req.text, req.voice_id, req.speed, req.pause, req.effect)
-            wav = audio.path
-            if q.get("max_seconds") and audio.duration > q["max_seconds"]:
-                wav = trim_audio(wav, self.work / "preview_trim.wav", q["max_seconds"])
-            w, h = v["resolutions"][req.resolution]
-            seed = req.seed if req.seed is not None else random.randint(0, 2**32 - 1)
-            settings = VideoSettings(prompt=req.prompt, width=w, height=h, steps=q["steps"], cfg=q["cfg"],
-                                     use_lora=q["lora"], seed=seed, quality=req.quality)
-            engine = self.video_engines[req.engine]
-            self._active = engine
-            try:
-                silent = engine.generate(req.image, wav, settings, self.work,
-                                         lambda f, t: report(0.05 + 0.93 * f, t))
-            finally:
-                self._active = None
-            report(0.98, "Füge Ton hinzu")
-            final = mux_audio(silent, wav, self.work / silent.name.replace("_silent", ""))
-            info = {**asdict(req), "image": req.image.name, "motion_prompt": req.prompt, "seed": seed, "steps": q["steps"], "cfg": q["cfg"],
-                    "lora": q["lora"], "width": w, "height": h, "audio_seconds": round(wav_duration(wav), 2),
-                    "voice": req.voice_id, "models": self.cfg["engines"].get(req.engine, {})}
-            run_dir = save_run(self.outputs, final, wav, req.image, info)
-            report(1.0, "Fertig")
-            return run_dir, info
+            audio = self.prepare_audio(req)
+            return self.render(req, audio.path, lambda f, t: report(0.05 + 0.95 * f, t))

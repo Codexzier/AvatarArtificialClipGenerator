@@ -1,11 +1,13 @@
 """Gradio-Oberfläche. Engines kommen von außen (Pipeline), die UI kennt keine konkrete Engine."""
 import json
+import time
 from pathlib import Path
 
 import gradio as gr
 
 from app.audio import EFFECT_LABELS
 from app.comfy.client import ComfyCancelled
+from app.batch import BatchRunner, parse_bulk, parse_rows
 from app.history import list_runs
 from app.jobs import JobRequest, Pipeline, suggest_resolution
 from app.pipeline import AudioTooLongError
@@ -50,6 +52,8 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
     effects = [(label, key) for key, label in EFFECT_LABELS.items()]
     qualities = [(QUALITY_LABELS.get(k, k), k) for k in v["quality"]]
     default_voice = voice_choices[0][1] if voice_choices else None
+    fps_choices = [(f"{f} fps" + (" (nativ)" if f == v["fps"] else " (interpoliert)"), f) for f in v["output_fps_options"]]
+    runner = BatchRunner(pipeline)
 
     with gr.Blocks(title="Sprechendes Bild") as demo:
         hint = memory_hint()
@@ -72,6 +76,7 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
                 with gr.Row():
                     resolution = gr.Dropdown(resolutions, value="480p quer", label="Auflösung", scale=1)
                     quality = gr.Dropdown(qualities, value="fast", label="Qualität", scale=1)
+                    fps = gr.Dropdown(fps_choices, value=v["fps"], label="Bildrate", scale=1)
                 with gr.Row():
                     listen = gr.Button("🔊 Probehören", scale=2)
                     go = gr.Button("🎬 Erzeugen", variant="primary", scale=3)
@@ -91,6 +96,23 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
                     engine = gr.Dropdown(list(pipeline.video_engines), value=next(iter(pipeline.video_engines)),
                                          label="Video-Engine")
                 res_hint = gr.Markdown()
+
+            with gr.Tab("Liste", id="liste"):
+                jobs = gr.Dataframe(headers=["Dateiname", "Text", "Status"], datatype=["str", "str", "str"],
+                                    value=[["", "", ""]], type="array", column_count=(3, "fixed"), row_count=1,
+                                    interactive=True, static_columns=[2], wrap=True, max_height=130,
+                                    column_widths=["22%", "50%", "28%"])
+                with gr.Row():
+                    add_cur = gr.Button("＋ Text aus „Erstellen“", scale=2)
+                    clear = gr.Button("Leeren", scale=1)
+                with gr.Accordion("Mehrere Einträge einfügen (eine Zeile: name | text)", open=False):
+                    bulk = gr.Textbox(show_label=False, lines=3, placeholder="begruessung | Hallo und willkommen.")
+                    bulk_add = gr.Button("Einfügen")
+                with gr.Row():
+                    start_list = gr.Button("▶ Liste starten", variant="primary", scale=3)
+                    stop_list = gr.Button("⏹", variant="stop", scale=1, min_width=40)
+                list_status = gr.Markdown("Einstellungen von „Erstellen“ gelten für alle Einträge. "
+                                          "Erst wird die Sprache aller Texte vorbereitet, dann Video für Video erzeugt.")
 
             with gr.Tab("Ergebnis", id="ergebnis"):
                 video = gr.Video(label="Ergebnis", interactive=False, height=280)
@@ -125,12 +147,12 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
 
         listen.click(do_listen, [text, voice, speed, pause, effect], [listen_audio, status])
 
-        def do_generate(img, t, vid, sp, pa, ef, pr, res, ql, sd, rnd, eng, progress=gr.Progress()):
+        def do_generate(img, t, vid, sp, pa, ef, pr, res, ql, sd, rnd, eng, fps_, progress=gr.Progress()):
             if not img:
                 raise gr.Error("Bitte ein Bild hochladen.")
             if not (t or "").strip():
                 raise gr.Error("Bitte einen Text eingeben.")
-            req = JobRequest(Path(img), t, vid, sp, pa, ef, pr, res, ql, None if rnd else int(sd), eng)
+            req = JobRequest(Path(img), t, vid, sp, pa, ef, pr, res, ql, None if rnd else int(sd), eng, int(fps_))
             try:
                 run_dir, info = pipeline.run(req, lambda f, d: progress(f, desc=d))
             except ComfyCancelled:
@@ -138,13 +160,44 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
             except (AudioTooLongError, ValueError, RuntimeError) as e:
                 raise gr.Error(str(e))
             msg = (f"Fertig: `{run_dir.name}` · Seed {info['seed']} · "
-                   f"{info['audio_seconds']} s · {info['width']}x{info['height']}")
-            return str(run_dir / "video.mp4"), msg, msg, gr.Tabs(selected="ergebnis")
+                   f"{info['audio_seconds']} s · {info['width']}x{info['height']} · {info['fps']} fps")
+            return str(run_dir / info["filename"]), msg, msg, gr.Tabs(selected="ergebnis")
 
         go.click(do_generate, [image, text, voice, speed, pause, effect, prompt, resolution, quality, seed,
-                               random_seed, engine], [video, result_info, status, tabs], concurrency_limit=1, concurrency_id="gpu",
+                               random_seed, engine, fps], [video, result_info, status, tabs], concurrency_limit=1, concurrency_id="gpu",
                  show_progress_on=[status])
-        stop.click(lambda: pipeline.cancel(), None, None, queue=False)
+        stop.click(runner.cancel, None, None, queue=False)
+        stop_list.click(runner.cancel, None, None, queue=False)
+
+        # --- Job-Liste -----------------------------------------------------------------------
+        def non_empty(rows):
+            return [r for r in (rows or []) if any(str(c or "").strip() for c in r[:2])]
+
+        add_cur.click(lambda rows, t: non_empty(rows) + [["", t or "", ""]], [jobs, text], jobs)
+        clear.click(lambda: [["", "", ""]], None, jobs)
+        bulk_add.click(lambda rows, b: (non_empty(rows) + [r + [""] for r in parse_bulk(b)], ""), [jobs, bulk],
+                       [jobs, bulk])
+
+        def do_batch(rows, img, vid, sp, pa, ef, pr, res, ql, sd, rnd, eng, fps_):
+            if not img:
+                raise gr.Error("Bitte ein Bild hochladen (Tab „Erstellen“).")
+            items = parse_rows(rows)
+            if not items:
+                raise gr.Error("Die Liste enthält keinen Text.")
+            template = JobRequest(Path(img), "", vid, sp, pa, ef, pr, res, ql, int(sd), eng, int(fps_))
+            try:
+                runner.start(items, template, bool(rnd))
+            except RuntimeError as e:
+                raise gr.Error(str(e))
+            while runner.running:
+                yield [it.row() for it in items], f"{runner.progress * 100:.0f} % · {runner.message}"
+                time.sleep(1)
+            ok = sum(it.status == "fertig" for it in items)
+            yield [it.row() for it in items], f"{runner.message}: {ok} von {len(items)} fertig (Ordner `outputs/`)"
+
+        start_list.click(do_batch, [jobs, image, voice, speed, pause, effect, prompt, resolution, quality, seed,
+                                    random_seed, engine, fps], [jobs, list_status], concurrency_limit=1,
+                         concurrency_id="gpu")
 
         def load_history():
             runs = list_runs(pipeline.outputs)

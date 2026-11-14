@@ -21,7 +21,8 @@ tts:
 
 video:
   engine: wan_s2v
-  fps: 16                     # feste Bildrate von Wan 2.2 S2V
+  fps: 16                     # feste Bildrate von Wan 2.2 S2V (nativ, Standard)
+  output_fps_options: [16, 24]  # 24 = per ffmpeg aus 16 fps interpoliert (CPU, Länge/Ton-Sync unverändert)
   tail_tolerance_frames: 4    # so viele Frames darf das Video kürzer sein (letztes Bild wird gehalten)
   trim_frames: 3              # Frames, die der "Erstes-Bild-Fix" der offiziellen Vorlage entfernt
   resolutions:

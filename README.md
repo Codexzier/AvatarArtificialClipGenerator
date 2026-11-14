@@ -62,6 +62,14 @@ scripts/start.sh        # startet ComfyUI (falls nicht schon aktiv) und die App 
   oder eigenen Prompt, Stimme/Tempo/Pause/Effekt wählen, mit „Probehören" Stimme und Länge prüfen, dann „Video erzeugen".
 - Die Qualitätsstufe steuert Schritte und Lightning-LoRA; „Vorschau" kürzt das Audio auf 2 s.
 - Es läuft immer nur ein Job; weitere warten in der Warteschlange. „Abbrechen" stoppt den laufenden Job.
+- **Liste:** mehrere Clips am Stück. Pro Zeile Zieldateiname und Text (oder viele Zeilen auf einmal im Format `name | text`
+  einfügen). Es gelten die Einstellungen aus „Erstellen“ (Bild, Stimme, Auflösung, Stufe, Bildrate). Ablauf: zuerst wird
+  die Sprache aller Texte vorbereitet (CPU), dann Video für Video erzeugt; die Modelle bleiben dabei geladen und werden erst
+  nach der ganzen Liste freigegeben. Ein Fehler (z. B. Text zu lang, Speicher voll) stoppt die Liste nicht. Ergebnis:
+  `outputs/<Datum_Uhrzeit>_<name>/<name>.mp4`.
+- **Bildrate:** 16 fps ist nativ (Standard). 24 fps wird per ffmpeg aus den 16 fps berechnet (CPU, nach dem Modell; Länge und
+  Lippensync bleiben gleich; bei schnellen Mundbewegungen können leichte Schlieren entstehen). Gemessen auf einer langsamen
+  4-Kern-Testmaschine: ca. 28 s für 10 s Video in 480p, ca. 70 s in 720p.
 - **Verlauf:** bisherige Clips mit ihren Einstellungen (`outputs/<Datum_Uhrzeit>/`).
 - Fehlt Auslagerungsspeicher (Swap < 8 GB bei < 48 GB RAM), zeigt die App einen Hinweis.
 

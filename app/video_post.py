@@ -5,12 +5,19 @@ from pathlib import Path
 from app.audio import _ffmpeg, wav_duration
 
 
-def frames_to_video(frames_dir: Path, fps: int, duration: float, out: Path) -> Path:
+INTERPOLATE = "minterpolate=fps={fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1"
+
+
+def frames_to_video(frames_dir: Path, fps: int, duration: float, out: Path, out_fps: int | None = None) -> Path:
     """Setzt PNG-Frames (frame_00001.png ...) zu einem Video exakt in Länge `duration` zusammen.
-    Ist das Video kürzer, wird das letzte Bild gehalten; ist es länger, wird abgeschnitten."""
+    Ist das Video kürzer, wird das letzte Bild gehalten; ist es länger, wird abgeschnitten.
+    Mit out_fps != fps werden Zwischenbilder berechnet (ffmpeg minterpolate, CPU); Länge und Ton-Sync bleiben gleich."""
+    chain = f"tpad=stop_mode=clone:stop_duration={duration:.3f}"
+    if out_fps and out_fps != fps:
+        chain += "," + INTERPOLATE.format(fps=out_fps)
     _ffmpeg([
         "-framerate", str(fps), "-i", str(frames_dir / "frame_%05d.png"),
-        "-vf", f"tpad=stop_mode=clone:stop_duration={duration:.3f},format=yuv420p",
+        "-vf", f"{chain},format=yuv420p",
         "-t", f"{duration:.3f}", "-c:v", "libx264", "-crf", "14", "-preset", "medium", str(out),
     ])
     return out
