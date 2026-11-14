@@ -9,7 +9,9 @@ from app.audio import EFFECT_LABELS
 from app.comfy.client import ComfyCancelled
 from app.batch import BatchRunner, parse_bulk, parse_rows
 from app.history import list_runs
+from app.engines.wan_fun_control import CONTROL_MODES
 from app.jobs import JobRequest, Pipeline, suggest_resolution
+from app.v2v import V2VPipeline, V2VRequest
 from app.pipeline import AudioTooLongError
 from app.storage import safe_name
 from app.profiles import INDIVIDUAL, clip_id, get_profile, profile_choices
@@ -45,7 +47,7 @@ footer {display: none !important;}
 """
 
 
-def build_ui(pipeline: Pipeline) -> gr.Blocks:
+def build_ui(pipeline: Pipeline, v2v: "V2VPipeline | None" = None) -> gr.Blocks:
     cfg = pipeline.cfg
     v = cfg["video"]
     voice_choices = [(f"[{vo.engine}] {vo.label}", vo.id) for vo in pipeline.voices.values()]
@@ -104,6 +106,36 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
                     engine = gr.Dropdown(list(pipeline.video_engines), value=next(iter(pipeline.video_engines)),
                                          label="Video-Engine")
                 res_hint = gr.Markdown()
+
+            with gr.Tab("Video→Video", id="v2v", visible=v2v is not None):
+                vc = cfg.get("v2v", {})
+                with gr.Row():
+                    v_in = gr.Video(label=f"Eingabe-Clip (max. {vc.get('max_seconds', 5)} s)", sources=["upload"],
+                                    height=110, scale=1)
+                    v_ref = gr.Image(label="Referenzbild (optional)", type="filepath", height=110,
+                                     sources=["upload", "clipboard"], scale=1)
+                v_prompt = gr.Textbox(show_label=False, lines=2, max_lines=3,
+                                      placeholder="Was soll zu sehen sein? z. B. Ein Mondfahrzeug fährt über Regolith …")
+                with gr.Row():
+                    v_style = gr.Dropdown([(s["label"], k) for k, s in vc.get("styles", {}).items()],
+                                          value="fotorealistisch", label="Stil", scale=1)
+                    v_control = gr.Dropdown([(label, k) for k, label in CONTROL_MODES.items()], value="canny",
+                                            label="Steuerung", scale=1)
+                with gr.Row():
+                    v_res = gr.Dropdown(list(vc.get("resolutions", {})), value=next(iter(vc.get("resolutions", {"": 0}))),
+                                        label="Auflösung (24 fps)", scale=1)
+                    v_quality = gr.Dropdown([(QUALITY_LABELS.get(k, k), k) for k in vc.get("quality", {})],
+                                            value="normal", label="Qualität", scale=1)
+                with gr.Row():
+                    v_go = gr.Button("🎬 Clip erzeugen", variant="primary", scale=3)
+                    v_stop = gr.Button("⏹", variant="stop", scale=1, min_width=40)
+                v_status = gr.Markdown()
+                with gr.Accordion("Mehr: Dateiname, Seed, Ton", open=False):
+                    with gr.Row():
+                        v_name = gr.Textbox(value="v2v", label="Dateiname")
+                        v_seed = gr.Number(value=0, precision=0, label="Seed")
+                        v_random = gr.Checkbox(value=True, label="Zufälliger Seed")
+                    v_audio = gr.Checkbox(value=True, label="Ton des Eingabe-Clips übernehmen")
 
             with gr.Tab("Liste", id="liste"):
                 jobs = gr.Dataframe(headers=["Dateiname", "Text", "Status"], datatype=["str", "str", "str"],
@@ -197,6 +229,30 @@ def build_ui(pipeline: Pipeline) -> gr.Blocks:
                  show_progress_on=[status])
         stop.click(runner.cancel, None, None, queue=False)
         stop_list.click(runner.cancel, None, None, queue=False)
+
+        # --- Video -> Video ------------------------------------------------------------------
+        def do_v2v(vid_in, ref, pr, st, ctl, res, ql, nm, sd, rnd, aud, progress=gr.Progress()):
+            if not vid_in:
+                raise gr.Error("Bitte einen Eingabe-Clip hochladen.")
+            req = V2VRequest(Path(vid_in), pr or "", st, ctl, res, ql, None if rnd else int(sd),
+                             Path(ref) if ref else None, bool(aud), nm or "v2v")
+            try:
+                run_dir, info = v2v.run(req, lambda f, d: progress(f, desc=d))
+            except ComfyCancelled:
+                return None, "Abgebrochen.", "Abgebrochen.", gr.Tabs()
+            except (ValueError, RuntimeError) as e:
+                raise gr.Error(str(e))
+            msg = (f"Fertig: `{run_dir.name}` · Seed {info['seed']} · {info['seconds']} s · "
+                   f"{info['width']}x{info['height']} · 24 fps")
+            return str(run_dir / info["filename"]), msg, msg, gr.Tabs(selected="ergebnis")
+
+        if v2v is not None:
+            v_go.click(do_v2v, [v_in, v_ref, v_prompt, v_style, v_control, v_res, v_quality, v_name, v_seed, v_random,
+                                v_audio], [video, result_info, v_status, tabs], concurrency_limit=1,
+                       concurrency_id="gpu", show_progress_on=[v_status])
+            v_stop.click(v2v.cancel, None, None, queue=False)
+            v_res.change(lambda r: "**720p:** langsam (grob 10–30 min) und speicherintensiv." if "1280" in r else "",
+                         v_res, v_status)
 
         # --- Job-Liste -----------------------------------------------------------------------
         def non_empty(rows):

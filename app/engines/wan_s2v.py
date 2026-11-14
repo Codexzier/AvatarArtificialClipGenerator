@@ -11,9 +11,10 @@ import uuid
 from pathlib import Path
 
 from app.audio import convert_for_engine, wav_duration
-from app.comfy.client import ComfyClient, ComfyCancelled, ComfyOutOfMemory, output_files
+from app.comfy.client import ComfyClient, ComfyCancelled, ComfyOutOfMemory
 from app.config import ROOT
 from app.engines.base import ProgressFn, VideoEngine, VideoSettings
+from app.engines.frames import cleanup_comfy_output, download_frames
 from app.video_post import frames_to_video
 
 WORKFLOW_FILE = ROOT / "workflows" / "wan22_s2v.api.json"
@@ -116,13 +117,7 @@ class WanS2VEngine(VideoEngine):
                 progress(0.0, f"Starte ({chunks} Chunk{'s' if chunks > 1 else ''}, {settings.steps} Schritte)")
             history = self.client.run(graph, on_progress)
             frames_dir = work_dir / f"{job}_frames"
-            frames_dir.mkdir()
-            files = output_files(history)
-            if not files:
-                raise RuntimeError("ComfyUI hat keine Bilder geliefert.")
-            for i, f in enumerate(files, 1):
-                data = self.client.view(f["filename"], f.get("subfolder", ""), f.get("type", "output"))
-                (frames_dir / f"frame_{i:05d}.png").write_bytes(data)
+            download_frames(self.client, history, frames_dir)
             if progress:
                 progress(0.97, "Berechne Zwischenbilder" if settings.output_fps != self.fps else "Setze Video zusammen")
             out = frames_to_video(frames_dir, self.fps, duration, work_dir / f"{job}_silent.mp4", settings.output_fps)
@@ -145,5 +140,4 @@ class WanS2VEngine(VideoEngine):
         self.client.free()
 
     def _cleanup_output(self, prefix: str) -> None:
-        if self.comfyui_dir:
-            shutil.rmtree(self.comfyui_dir / "output" / Path(prefix).parent, ignore_errors=True)
+        cleanup_comfy_output(self.comfyui_dir, prefix)

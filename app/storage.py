@@ -13,7 +13,8 @@ def safe_name(name: str, default: str = "video") -> str:
     return name[:80] or default
 
 
-def save_run(outputs_dir: Path, video: Path, wav: Path, image: Path, settings: dict, name: str = "video") -> Path:
+def save_run(outputs_dir: Path, video: Path, wav: Path | None, image: Path | None, settings: dict, name: str = "video",
+             extra: dict[str, Path] | None = None) -> Path:
     """Legt outputs/<Datum_Uhrzeit>[_<name>]/ an; das Video heißt <name>.mp4."""
     name = safe_name(name)
     base = time.strftime("%Y-%m-%d_%H%M%S") + ("" if name == "video" else f"_{name}")
@@ -23,7 +24,11 @@ def save_run(outputs_dir: Path, video: Path, wav: Path, image: Path, settings: d
         run_dir = outputs_dir / f"{base}_{n}"
     run_dir.mkdir(parents=True)
     shutil.copy2(video, run_dir / f"{name}.mp4")
-    shutil.copy2(wav, run_dir / "audio.wav")
-    shutil.copy2(image, run_dir / f"input{image.suffix.lower() or '.png'}")
+    if wav:
+        shutil.copy2(wav, run_dir / "audio.wav")
+    if image:
+        shutil.copy2(image, run_dir / f"input{image.suffix.lower() or '.png'}")
+    for target, src in (extra or {}).items():
+        shutil.copy2(src, run_dir / target)
     (run_dir / "settings.json").write_text(json.dumps(settings, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
     return run_dir

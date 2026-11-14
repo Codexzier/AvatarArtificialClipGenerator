@@ -18,7 +18,11 @@ MODELS = {
     "vae": ("vae", "wan_2.1_vae.safetensors", f"{WAN22}/vae/wan_2.1_vae.safetensors", 0.24, "Apache-2.0"),
     "audio": ("audio_encoders", "wav2vec2_large_english_fp16.safetensors", f"{WAN22}/audio_encoders/wav2vec2_large_english_fp16.safetensors", 0.60, "Apache-2.0"),
     "lora": ("loras", "wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors", f"{WAN22}/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors", 1.2, "Apache-2.0 (Größe geschätzt)"),
+    # Video -> Video (Wan 2.2 Fun Control 5B); Größen laut offizieller ComfyUI-Vorlage
+    "fun5b": ("diffusion_models", "wan2.2_fun_control_5B_bf16.safetensors", f"{WAN22}/diffusion_models/wan2.2_fun_control_5B_bf16.safetensors", 9.32, "Apache-2.0"),
+    "vae22": ("vae", "wan2.2_vae.safetensors", f"{WAN22}/vae/wan2.2_vae.safetensors", 1.31, "Apache-2.0"),
 }
+SETS = {"s2v": ["unet", "clip", "vae", "audio", "lora"], "v2v": ["fun5b", "vae22", "clip"]}
 
 
 def download(url: str, dest: Path):
@@ -39,9 +43,10 @@ def download(url: str, dest: Path):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("parts", nargs="*", choices=list(MODELS), help="leer = alle")
+    p.add_argument("--set", choices=list(SETS), help="s2v = sprechendes Bild, v2v = Video→Video")
     p.add_argument("--yes", action="store_true")
     a = p.parse_args()
-    keys = a.parts or list(MODELS)
+    keys = a.parts or (SETS[a.set] if a.set else list(MODELS))
     root = resolve_path(load_config()["paths"]["comfyui_dir"]) / "models"
     total = 0.0
     for k in keys:

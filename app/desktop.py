@@ -94,10 +94,11 @@ class Backend:
         ui = self.cfg["ui"]
         if port_open(ui["host"], ui["port"]):
             return  # App läuft bereits (zweiter Start): nur ein weiteres Fenster öffnen
-        from app.main import build_pipeline
+        from app.main import build_pipeline, build_v2v
         from app.ui import CSS, THEME, build_ui
 
-        self.demo = build_ui(build_pipeline(self.cfg))
+        pipeline = build_pipeline(self.cfg)
+        self.demo = build_ui(pipeline, build_v2v(self.cfg, pipeline))
         self.demo.queue(default_concurrency_limit=1)
         self.demo.launch(server_name=ui["host"], server_port=ui["port"], prevent_thread_lock=True, inbrowser=False,
                          css=CSS, theme=THEME,

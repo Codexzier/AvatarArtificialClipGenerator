@@ -74,3 +74,39 @@ profiles:
     audio_channels: 1
     audio_bitrate: 96k
     export_dir: outputs/mondschuerfer   # später auf assets/clips des Spiels stellen
+
+# Video -> Video (Tab "Video→Video"): Wan 2.2 Fun Control 5B, 24 fps, max. 5 s
+v2v:
+  max_seconds: 5
+  resolutions:               # Seiten müssen durch 32 teilbar sein
+    "480p 16:9 (832x480)": [832, 480]
+    "540p 16:9 (960x544)": [960, 544]
+    "720p 16:9 (1280x704)": [1280, 704]
+    "quadratisch (704x704)": [704, 704]
+    "hoch (480x832)": [480, 832]
+  quality:                   # Startwerte; die Vorlage nutzt 20 Schritte, CFG 5
+    preview: {steps: 10, cfg: 5.0}
+    normal:  {steps: 20, cfg: 5.0}
+    high:    {steps: 30, cfg: 5.0}
+  styles:
+    fotorealistisch:
+      label: "Fotorealistisch"
+      prompt: "photorealistic live-action footage, real-world materials and textures, natural lighting, realistic skin and surfaces, cinematic 35mm film, highly detailed"
+      negative: "video game graphics, CGI, 3D render, low poly, cartoon, anime, illustration, painting, plastic look, blurry, low quality, static, deformed"
+    comic:
+      label: "Comic"
+      prompt: "comic book style, bold black ink outlines, flat cel shading, vibrant saturated colors, hand-drawn illustration, halftone shading"
+      negative: "photo, photorealistic, live action, 3D render, blurry, low quality, static, deformed"
+    animation3d:
+      label: "3D-Animation"
+      prompt: "3D animated feature film style, stylized CGI characters, soft global illumination, smooth shading, vivid colors, high quality render"
+      negative: "photo, live action, 2D drawing, sketch, flat colors, blurry, low quality, static, deformed"
+    keiner:
+      label: "Kein Stil-Zusatz"
+      prompt: ""
+
+engines_v2v:
+  wan_fun_control_5b:
+    unet: wan2.2_fun_control_5B_bf16.safetensors
+    clip: umt5_xxl_fp8_e4m3fn_scaled.safetensors
+    vae: wan2.2_vae.safetensors

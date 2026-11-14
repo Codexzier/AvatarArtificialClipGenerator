@@ -81,6 +81,23 @@ scripts/start.sh        # startet ComfyUI (falls nicht schon aktiv) und die App 
 - **Verlauf:** bisherige Clips mit ihren Einstellungen (`outputs/<Datum_Uhrzeit>/`).
 - Fehlt Auslagerungsspeicher (Swap < 8 GB bei < 48 GB RAM), zeigt die App einen Hinweis.
 
+## Video → Video (Tab „Video→Video“)
+
+Ein vorhandener Clip (Spielaufnahme, Mock-Render) gibt Bewegung und Aufbau vor, der Prompt bestimmt Inhalt und Aussehen.
+Modell: **Wan 2.2 Fun Control 5B** (offizielle ComfyUI-Vorlage `video_wan2_2_5B_fun_control`), 24 fps, höchstens 5 s
+(121 Bilder); längere Clips werden gekürzt, der Clip wird füllend auf die Zielgröße skaliert und mittig beschnitten.
+
+- **Steuerung:** „Kanten“ berechnet Canny-Kanten aus dem Clip (gut für Spielaufnahmen). „Direkt“ verwendet den Clip
+  unverändert als Steuervideo, z. B. einen Tiefen-, Kanten- oder Posen-Render aus Blender.
+- **Stil:** Fotorealistisch, Comic, 3D-Animation oder ohne Zusatz (Prompt-Zusätze in `config.yaml` unter `v2v.styles`).
+- **Referenzbild (optional):** gibt Aussehen/Charakter vor.
+- **Auflösung:** 832×480 (empfohlen), 960×544, 1280×704 (Maximum des Modells, langsam), 704×704, 480×832.
+- **Qualität:** Vorschau 10 / Normal 20 / Hoch 30 Schritte (Startwerte).
+- Der Ton des Eingabe-Clips wird auf Wunsch übernommen. Ergebnis in `outputs/<Datum_Uhrzeit>_<name>/` mit `input.mp4`.
+
+Modelle: `python scripts/download_models.py --set v2v` (Fun-Control-5B 9,3 GB, Wan-2.2-VAE 1,3 GB; der Text-Encoder
+ist schon von Wan 2.2 S2V da). ComfyUI weist selbst darauf hin, dass das 5B-Modell oft keine sehr guten Ergebnisse liefert.
+
 ## Desktop-Anwendung (Linux, Pop!_OS)
 
 Statt im Browser läuft die App in einem eigenen Fenster (ca. 620x470) mit Eintrag im Anwendungsmenü.
